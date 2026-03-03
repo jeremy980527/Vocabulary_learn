@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini 英文單字記憶神器</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg: #F3F4F6;
+            --card-bg: #FFFFFF;
+            --text: #1F2937;
+            --text-light: #6B7280;
+            --star: #FBBF24;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); line-height: 1.6; padding: 20px; }
+        
+        /* Layout */
+        .container { max-width: 1200px; margin: 0 auto; display: flex; gap: 20px; flex-wrap: wrap; }
+        .sidebar { flex: 1; min-width: 250px; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); height: fit-content; }
+        .main-content { flex: 3; min-width: 300px; }
+
+        /* UI Elements */
+        h1, h2, h3 { margin-bottom: 15px; }
+        input[type="text"], input[type="password"], textarea, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 16px; }
+        textarea { resize: vertical; min-height: 80px; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        button:hover { background: var(--primary-hover); }
+        .btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+        .btn-outline:hover { background: var(--primary); color: white; }
+        .btn-small { padding: 5px 10px; font-size: 14px; }
+        .btn-danger { background: #EF4444; }
+        .btn-danger:hover { background: #DC2626; }
+
+        /* Cards */
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
+        .card { background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); position: relative; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #E5E7EB; padding-bottom: 10px; }
+        .word-title { font-size: 24px; font-weight: bold; color: var(--primary); }
+        .star-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #D1D5DB; transition: 0.2s; padding: 0; }
+        .star-btn.active { color: var(--star); }
+        .card-section { margin-bottom: 10px; }
+        .card-section strong { display: block; color: var(--text-light); font-size: 14px; }
+
+        /* Folders */
+        .folder-list { list-style: none; margin-top: 15px; }
+        .folder-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #E5E7EB; }
+        .folder-actions button { margin-left: 5px; }
+
+        /* Loading */
+        #loading { display: none; text-align: center; margin: 20px 0; color: var(--primary); font-weight: bold; }
+
+        /* Practice Mode */
+        #practice-area { display: none; background: var(--card-bg); padding: 30px; border-radius: 12px; text-align: center; }
+        .flashcard { background: #FFFBEB; border: 2px dashed #FCD34D; padding: 40px 20px; border-radius: 12px; margin: 20px 0; cursor: pointer; user-select: none; }
+        .flashcard-content { font-size: 18px; }
+        .hidden-word { font-size: 28px; font-weight: bold; color: var(--primary); display: none; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h3>系統設定</h3>
+        <input type="password" id="api-key" placeholder="請輸入您的 Gemini API Key">
+        
+        <hr style="margin: 20px 0; border: 0; border-top: 1px solid #E5E7EB;">
+
+        <h3>我的資料夾</h3>
+        <div style="display: flex; gap: 5px;">
+            <input type="text" id="new-folder-name" placeholder="新資料夾名稱">
+            <button onclick="createFolder()">新增</button>
+        </div>
+        <ul class="folder-list" id="folder-list"></ul>
+
+        <hr style="margin: 20px 0; border: 0; border-top: 1px solid #E5E7EB;">
+        
+        <button class="btn-outline" style="width: 100%;" onclick="togglePracticeMode()">切換練習模式 🔄</button>
+    </div>
+
+    <div class="main-content">
+        
+        <div id="learning-area">
+            <h2>輸入英文單字</h2>
+            <p style="color: var(--text-light); margin-bottom: 10px;">可輸入多個單字，請用「英文逗號 (,)」隔開。例如：apple, astronaut, philosophy</p>
+            <textarea id="word-input" placeholder="輸入單字..."></textarea>
+            <button onclick="generateCards()">生成專屬字卡 ✨</button>
+            <div id="loading">Gemini 正在為您撰寫故事與記憶法，請稍候...</div>
+            
+            <div class="cards-grid" id="cards-container"></div>
+        </div>
+
+        <div id="practice-area">
+            <h2>練習模式</h2>
+            <select id="practice-folder-select" onchange="loadPracticeCards()">
+                <option value="">選擇要練習的資料夾...</option>
+            </select>
+            <div id="practice-card-container">
+                <p>請先選擇資料夾</p>
+            </div>
+            <div style="margin-top: 20px; display: none;" id="practice-controls">
+                <button class="btn-outline" onclick="nextPracticeCard()">下一張 ➔</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    // 資料結構初始化
+    let folders = JSON.parse(localStorage.getItem('geminiFolders')) || { '預設資料夾': [] };
+    let currentPracticeCards = [];
+    let practiceIndex = 0;
+
+    // 初始化頁面
+    window.onload = () => {
+        renderFolders();
+        updatePracticeFolderSelect();
+    };
+
+    // 儲存至 LocalStorage
+    function saveData() {
+        localStorage.setItem('geminiFolders', JSON.stringify(folders));
+        renderFolders();
+        updatePracticeFolderSelect();
+    }
+
+    // 資料夾管理
+    function createFolder() {
+        const name = document.getElementById('new-folder-name').value.trim();
+        if (name && !folders[name]) {
+            folders[name] = [];
+            document.getElementById('new-folder-name').value = '';
+            saveData();
+        } else if (folders[name]) {
+            alert('資料夾已存在！');
+        }
+    }
+
+    function renameFolder(oldName) {
+        const newName = prompt('請輸入新的資料夾名稱：', oldName);
+        if (newName && newName !== oldName && !folders[newName]) {
+            folders[newName] = folders[oldName];
+            delete folders[oldName];
+            saveData();
+        }
+    }
+
+    function deleteFolder(name) {
+        if (confirm(`確定要刪除「${name}」以及裡面的所有單字嗎？`)) {
+            delete folders[name];
+            saveData();
+        }
+    }
+
+    function renderFolders() {
+        const list = document.getElementById('folder-list');
+        list.innerHTML = '';
+        for (let name in folders) {
+            list.innerHTML += `
+                <li class="folder-item">
+                    <span>${name} (${folders[name].length})</span>
+                    <div class="folder-actions">
+                        <button class="btn-small btn-outline" onclick="renameFolder('${name}')">改名</button>
+                        <button class="btn-small btn-danger" onclick="deleteFolder('${name}')">刪除</button>
+                    </div>
+                </li>
+            `;
+        }
+    }
+
+    // 呼叫 Gemini API
+    async function generateCards() {
+        const apiKey = document.getElementById('api-key').value.trim();
+        const inputText = document.getElementById('word-input').value.trim();
+        
+        if (!apiKey) return alert('請先輸入 Gemini API Key！');
+        if (!inputText) return alert('請輸入至少一個單字！');
+
+        const words = inputText.split(',').map(w => w.trim()).filter(w => w);
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('cards-container').innerHTML = '';
+
+        const prompt = `
+        我正在學習英文，請幫我分析以下單字：[${words.join(', ')}]。
+        請務必以純 JSON 陣列格式回傳，不要包含任何 Markdown 語法 (如 \`\`\`json 等)。
+        格式要求：
+        [
+          {
+            "word": "單字本身",
+            "story": "用繁體中文寫一段約50字的該單字歷史故事或有趣冷知識",
+            "origin": "該單字的字根字首或由來",
+            "mnemonic": "一個好記、有創意的諧音或聯想記憶法"
+          }
+        ]`;
+
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            });
+
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
+
+            let text = data.candidates[0].content.parts[0].text;
+            // 清理可能出現的 markdown 標記
+            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+            const cardsData = JSON.parse(text);
+            
+            renderCards(cardsData);
+        } catch (error) {
+            alert('生成失敗，請檢查 API Key 或稍後再試。\n錯誤訊息: ' + error.message);
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    // 渲染生成的字卡
+    function renderCards(cardsData) {
+        const container = document.getElementById('cards-container');
+        cardsData.forEach(data => {
+            const isSaved = isWordSaved(data.word);
+            const cardHTML = `
+                <div class="card" id="card-${data.word}">
+                    <div class="card-header">
+                        <div class="word-title">${data.word}</div>
+                        <button class="star-btn ${isSaved ? 'active' : ''}" onclick="toggleSaveWord(this, '${data.word}', \`${data.story}\`, \`${data.origin}\`, \`${data.mnemonic}\`)">★</button>
+                    </div>
+                    <div class="card-section">
+                        <strong>📖 歷史故事</strong>
+                        <p>${data.story}</p>
+                    </div>
+                    <div class="card-section">
+                        <strong>🧬 詞源由來</strong>
+                        <p>${data.origin}</p>
+                    </div>
+                    <div class="card-section">
+                        <strong>💡 記憶法</strong>
+                        <p>${data.mnemonic}</p>
+                    </div>
+                </div>
+            `;
+            container.innerHTML += cardHTML;
+        });
+    }
+
+    // 單字儲存邏輯
+    function isWordSaved(word) {
+        for (let folder in folders) {
+            if (folders[folder].some(item => item.word === word)) return true;
+        }
+        return false;
+    }
+
+    function toggleSaveWord(btn, word, story, origin, mnemonic) {
+        if (btn.classList.contains('active')) {
+            // 取消儲存
+            for (let folder in folders) {
+                folders[folder] = folders[folder].filter(item => item.word !== word);
+            }
+            btn.classList.remove('active');
+        } else {
+            // 儲存
+            const folderNames = Object.keys(folders);
+            if (folderNames.length === 0) {
+                alert('請先在左側建立資料夾！');
+                return;
+            }
+            let targetFolder = folderNames[0]; // 預設存入第一個
+            if (folderNames.length > 1) {
+                let folderListStr = folderNames.map((name, index) => `${index + 1}. ${name}`).join('\n');
+                let choice = prompt(`請輸入數字選擇要存入的資料夾：\n${folderListStr}`, '1');
+                let index = parseInt(choice) - 1;
+                if (index >= 0 && index < folderNames.length) {
+                    targetFolder = folderNames[index];
+                }
+            }
+            folders[targetFolder].push({ word, story, origin, mnemonic });
+            btn.classList.add('active');
+            alert(`已儲存至「${targetFolder}」！`);
+        }
+        saveData();
+    }
+
+    // 練習模式邏輯
+    function togglePracticeMode() {
+        const learningArea = document.getElementById('learning-area');
+        const practiceArea = document.getElementById('practice-area');
+        if (learningArea.style.display === 'none') {
+            learningArea.style.display = 'block';
+            practiceArea.style.display = 'none';
+        } else {
+            learningArea.style.display = 'none';
+            practiceArea.style.display = 'block';
+            updatePracticeFolderSelect();
+        }
+    }
+
+    function updatePracticeFolderSelect() {
+        const select = document.getElementById('practice-folder-select');
+        select.innerHTML = '<option value="">選擇要練習的資料夾...</option>';
+        for (let name in folders) {
+            if (folders[name].length > 0) {
+                select.innerHTML += `<option value="${name}">${name} (${folders[name].length} 字)</option>`;
+            }
+        }
+    }
+
+    function loadPracticeCards() {
+        const folderName = document.getElementById('practice-folder-select').value;
+        if (!folderName) return;
+        
+        // 打亂單字順序
+        currentPracticeCards = [...folders[folderName]].sort(() => Math.random() - 0.5);
+        practiceIndex = 0;
+        document.getElementById('practice-controls').style.display = 'block';
+        showPracticeCard();
+    }
+
+    function showPracticeCard() {
+        if (practiceIndex >= currentPracticeCards.length) {
+            document.getElementById('practice-card-container').innerHTML = '<h3>🎉 本資料夾練習完畢！</h3>';
+            document.getElementById('practice-controls').style.display = 'none';
+            return;
+        }
+
+        const card = currentPracticeCards[practiceIndex];
+        document.getElementById('practice-card-container').innerHTML = `
+            <div class="flashcard" onclick="document.getElementById('hidden-${card.word}').style.display='block'">
+                <p style="color:var(--text-light); margin-bottom: 10px;">點擊卡片顯示單字</p>
+                <div class="flashcard-content">
+                    <strong>提示 (記憶法)：</strong> ${card.mnemonic}<br><br>
+                    <strong>提示 (故事)：</strong> ${card.story}
+                </div>
+                <div id="hidden-${card.word}" class="hidden-word">${card.word}</div>
+            </div>
+        `;
+    }
+
+    function nextPracticeCard() {
+        practiceIndex++;
+        showPracticeCard();
+    }
+</script>
+
+</body>
+</html>
